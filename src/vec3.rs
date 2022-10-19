@@ -22,7 +22,7 @@ impl Vec3 {
 
 impl fmt::Display for Vec3 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({:+.3}, {:+.3}, {:+.3})", self.x, self.y, self.z)
+        write!(f, "({:+.4}, {:+.4}, {:+.4})", self.x, self.y, self.z)
     }
 }
 

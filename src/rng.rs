@@ -1,9 +1,8 @@
-use rand::SeedableRng;
-use rand::rngs::SmallRng;
 use super::vec3::*;
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
 
 pub struct RandomNumberGenerator {
-    // pub rng: SmallRng,
     pub state: u64,
     pub div: u64,
     pub modulo: u64,
@@ -27,22 +26,13 @@ impl RandomNumberGenerator {
     }
 
     pub fn random_double(&mut self) -> f64 {
+        // use this version if you want actual PRNG
         // return self.small_rng.gen();
 
+        // use this version if you want repeatable sequence of numbers
         let t1 = self.next();
         let t2 = self.next();
         return ((t1 * self.modulo + t2) as f64) / (self.modulo as f64) / (self.modulo as f64);
-
-        // let s = if self.next() > (self.modulo / 2) {
-        //     1u64
-        // } else {
-        //     0u64
-        // }; // 1 bit, sign
-        // let e = self.next() % 2048; // 11 bits, exponent
-        // let b = self.next() << 32 | self.next(); // 52 bits, mantissa
-        // let bits = s << 63 | e << 53 | b;
-        // println!("s {} e {} b {} bits {}", s, e, b, bits);
-        // return f64::from_bits(bits);
     }
 
     pub fn random_range(&mut self, min: f64, max: f64) -> f64 {
@@ -68,9 +58,10 @@ impl RandomNumberGenerator {
     pub fn random_in_unit_sphere(&mut self) -> Vec3 {
         loop {
             let p = self.random_vec3_range(-1.0, 1.0);
-            if p.length_squared() < 1.0 {
-                return p;
+            if p.length_squared() >= 1.0 {
+                continue;
             }
+            return p;
         }
     }
 
@@ -85,9 +76,10 @@ impl RandomNumberGenerator {
                 y: self.random_range(-1.0, 1.0),
                 z: 0.0,
             };
-            if p.length_squared() < 1.0 {
-                return p;
+            if p.length_squared() >= 1.0 {
+                continue;
             }
+            return p;
         }
     }
 }
