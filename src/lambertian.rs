@@ -19,7 +19,9 @@ impl Material for Lambertian {
         rng: &mut RandomNumberGenerator,
         _: Ray,
         rec: &HitRecord,
-    ) -> (bool, Option<Color>, Option<Ray>) {
+        attenuation: &mut Color,
+        scattered: &mut Ray,
+    ) -> bool {
         let mut scatter_direction = rec.normal + rng.random_unit_vector();
 
         // Catch degenerate scatter direction
@@ -27,11 +29,11 @@ impl Material for Lambertian {
             scatter_direction = rec.normal;
         }
 
-        let scattered = Ray {
+        *scattered = Ray {
             origin: rec.p,
             direction: scatter_direction,
         };
-        let attenuation = self.albedo;
-        return (true, Some(attenuation), Some(scattered));
+        *attenuation = self.albedo;
+        return true;
     }
 }

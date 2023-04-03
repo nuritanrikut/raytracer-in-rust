@@ -20,17 +20,15 @@ impl Material for Metal {
         rng: &mut RandomNumberGenerator,
         r_in: Ray,
         rec: &HitRecord,
-    ) -> (bool, Option<Color>, Option<Ray>) {
+        attenuation: &mut Color,
+        scattered: &mut Ray,
+    ) -> bool {
         let reflected = reflect(unit_vector(r_in.direction), rec.normal);
-        let scattered = Ray {
+        *scattered = Ray {
             origin: rec.p,
             direction: reflected + rng.random_in_unit_sphere() * self.fuzz,
         };
-        let attenuation = self.albedo;
-        return (
-            dot(scattered.direction, rec.normal) > 0.0,
-            Some(attenuation),
-            Some(scattered),
-        );
+        *attenuation = self.albedo;
+        return dot(scattered.direction, rec.normal) > 0.0;
     }
 }

@@ -21,6 +21,7 @@ use lambertian::*;
 use material::*;
 use metal::*;
 use ray::*;
+// use rayon::prelude::*;
 use rng::*;
 use sphere::*;
 use std::{env, f64::INFINITY, rc::Rc};
@@ -208,8 +209,8 @@ fn random_scene(rng: &mut RandomNumberGenerator) -> HittableList {
 }
 
 fn ray_color(
-    i: i32,
-    j: i32,
+    row: usize,
+    col: usize,
     r: Ray,
     world: &HittableList,
     depth: i32,
@@ -220,15 +221,17 @@ fn ray_color(
     }
     let mut rec = HitRecord::new();
     if world.hit(r, 0.001, INFINITY, &mut rec) {
-        let scatter_result = rec.material.scatter(rng, r, &rec);
-        if scatter_result.0 {
-            let attenuation = scatter_result.1.unwrap();
-            let scattered = scatter_result.2.unwrap();
-            let recursed_color = ray_color(i, j, scattered, world, depth - 1, rng);
+        let mut scattered = Ray::default();
+        let mut attenuation = Color::default();
+        if rec
+            .material
+            .scatter(rng, r, &rec, &mut attenuation, &mut scattered)
+        {
+            let recursed_color = ray_color(row, col, scattered, world, depth - 1, rng);
             // eprintln!(
-            //     "> Scatter {} {} dir={} color= {}, {}, {}",
-            //     i,
-            //     j,
+            //     "> Scatter {} {} dir={} attenuation={} recursed_color={} out={}",
+            //     col,
+            //     row,
             //     r.direction,
             //     attenuation,
             //     recursed_color,
@@ -237,7 +240,7 @@ fn ray_color(
             return attenuation * recursed_color;
         }
 
-        // eprintln!("> Diffuse {} {} = {}", i, j, rec.material.diffuse());
+        // eprintln!("> Diffuse {} {} = {}", col, row, rec.material.diffuse());
         return rec.material.diffuse();
     }
 
@@ -255,7 +258,7 @@ fn ray_color(
     };
     let sky = white * (1.0 - t) + blue * t;
 
-    // eprintln!("> Sky {} {} = {}", i, j, sky);
+    // eprintln!("> Sky {} {} = {}", col, row, sky);
     return sky;
 }
 
@@ -270,22 +273,93 @@ fn write_color(pixel_color: Color, samples_per_pixel: i32) {
     let gi = (256.0 * clamp(g, 0.0, 0.999)) as i32;
     let bi = (256.0 * clamp(b, 0.0, 0.999)) as i32;
 
-    // eprintln!("write_color {} r {} g {} b {} ri {} gi {} bi {}", pixel_color, r, g, b, ri, gi, bi);
+    // eprintln!(
+    //     "write_color {} r {:+.4} g {:+.4} b {:+.4} ri {} gi {} bi {}",
+    //     pixel_color, r, g, b, ri, gi, bi
+    // );
 
     println!("{} {} {}", ri, gi, bi);
 }
 
+struct Job<'a> {
+    pub rng: RandomNumberGenerator,
+    pub row: usize,
+    pub col: usize,
+    pub world: &'a HittableList,
+    pub camera: Camera,
+    pub image_width: i32,
+    pub image_height: i32,
+    pub samples_per_pixel_x: i32,
+    pub samples_per_pixel_y: i32,
+    pub max_depth: i32,
+}
+
+unsafe impl Send for Job<'_> {}
+
+fn render_job(job: &mut Job) -> Color {
+    let mut color = Color {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+
+    let width_minus_one = job.image_width as f64 - 1.0;
+    let height_minus_one = job.image_height as f64 - 1.0;
+
+    for sample_y in 0..job.samples_per_pixel_y {
+        let y = (sample_y as f64) / (job.samples_per_pixel_y as f64) - 0.5;
+        let v = (job.row as f64 + y) / height_minus_one;
+
+        for sample_x in 0..job.samples_per_pixel_x {
+            // eprintln!(
+            //     "Job {} {}, sample {} {}",
+            //     job.col, job.row, sample_x, sample_y
+            // );
+
+            let x = (sample_x as f64) / (job.samples_per_pixel_x as f64) - 0.5;
+            let u = (job.col as f64 + x) / width_minus_one;
+            let r = job.camera.get_ray(&mut job.rng, u, v);
+            color.add_assign(ray_color(
+                job.row,
+                job.col,
+                r,
+                &job.world,
+                job.max_depth,
+                &mut job.rng,
+            ));
+        }
+    }
+    return color;
+}
+
+fn render(image_width: i32, image_height: i32, jobs: &mut [Job], pixels: &mut Vec<Vec<Color>>) {
+    let job_count = image_width * image_height;
+    jobs.iter_mut()
+        .zip(0..job_count)
+        .for_each(|(job, job_index): (&mut Job, i32)| {
+            if job_index % image_width == 0 {
+                let remaining_lines = (job_count - job_index) / image_width;
+                eprint!("Lines remaining: {}  \r", remaining_lines);
+            }
+            pixels[job.row][job.col] = render_job(job);
+        });
+
+    eprint!("Lines remaining: 0  \n");
+}
+
 fn main() {
-    let aspect_ratio: f64 = 16.0 / 10.0;
-    let image_width: i32 = 1920;
-    let image_height: i32 = ((image_width as f64) / aspect_ratio) as i32;
-    let samples_per_pixel_x: i32 = 16;
-    let samples_per_pixel_y: i32 = 16;
-    let max_depth: i32 = 50;
+    const ASPECT_RATIO: f64 = 16.0 / 10.0;
+    const IMAGE_WIDTH: i32 = 192;
+    const IMAGE_HEIGHT: i32 = ((IMAGE_WIDTH as f64) / ASPECT_RATIO) as i32;
+    const SAMPLES_PER_PIXEL_X: i32 = 16;
+    const SAMPLES_PER_PIXEL_Y: i32 = 16;
+    const SAMPLE_COUNT: i32 = SAMPLES_PER_PIXEL_X * SAMPLES_PER_PIXEL_Y;
+    const JOB_COUNT: i32 = IMAGE_HEIGHT * IMAGE_WIDTH;
+    const MAX_DEPTH: i32 = 50;
 
     eprintln!(
         "Rendering {}x{} image with {}x{} samples per pixel",
-        image_width, image_height, samples_per_pixel_x, samples_per_pixel_y
+        IMAGE_WIDTH, IMAGE_HEIGHT, SAMPLES_PER_PIXEL_X, SAMPLES_PER_PIXEL_Y
     );
 
     let mut rng = RandomNumberGenerator::create();
@@ -301,56 +375,75 @@ fn main() {
         random_scene(&mut rng)
     };
 
-    let lookfrom = Point3 {
+    const LOOKFROM: Point3 = Point3 {
         x: 13.0,
         y: 2.0,
         z: 3.0,
     };
-    let lookat = Point3 {
+    const LOOKAT: Point3 = Point3 {
         x: 0.0,
         y: 0.0,
         z: 0.0,
     };
-    let vup = Vec3 {
+    const VUP: Vec3 = Vec3 {
         x: 0.0,
         y: 1.0,
         z: 0.0,
     };
-    let vfov: f64 = 20.0; // vertical field-of-view in degrees
-    let focus_dist: f64 = 10.0;
-    let aperture: f64 = 0.1;
+    const VFOV: f64 = 20.0; // vertical field-of-view in degrees
+    const FOCUS_DIST: f64 = 10.0;
+    const APERTURE: f64 = 0.1;
 
-    let cam: Camera = Camera::create(
-        lookfrom,
-        lookat,
-        vup,
-        vfov,
-        aspect_ratio,
-        aperture,
-        focus_dist,
+    let camera: Camera = Camera::create(
+        LOOKFROM,
+        LOOKAT,
+        VUP,
+        VFOV,
+        ASPECT_RATIO,
+        APERTURE,
+        FOCUS_DIST,
     );
 
-    println!("P3\n{} {}\n255\n", image_width, image_height);
-    for j in (0..image_height).rev() {
-        eprint!("Scanlines remaining: {}\n", j);
-        for i in 0..image_width {
-            let mut pixel_color = Color {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
+    let mut pixels: Vec<Vec<Color>> = (0..IMAGE_HEIGHT)
+        .map(|_| {
+            (0..IMAGE_WIDTH)
+                .map(|_| Color::default())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut jobs: Vec<Job> = Vec::with_capacity(JOB_COUNT as usize);
+
+    for row in 0usize..(IMAGE_HEIGHT as usize) {
+        // eprint!("Creating jobs for line: {}  \r", row);
+        for col in 0usize..(IMAGE_WIDTH as usize) {
+            let job = Job {
+                rng: rng.clone(),
+                row,
+                col,
+                world: &world,
+                camera,
+                image_width: IMAGE_WIDTH,
+                image_height: IMAGE_HEIGHT,
+                samples_per_pixel_x: SAMPLES_PER_PIXEL_X,
+                samples_per_pixel_y: SAMPLES_PER_PIXEL_Y,
+                max_depth: MAX_DEPTH,
             };
-            for s in 0..samples_per_pixel_x * samples_per_pixel_y {
-                let y = ((s / samples_per_pixel_y) as f64) / (samples_per_pixel_y as f64) - 0.5;
-                let x = ((s % samples_per_pixel_y) as f64) / (samples_per_pixel_x as f64) - 0.5;
-                let u = (i as f64 + x) / (image_width as f64 - 1.0);
-                let v = (j as f64 + y) / (image_height as f64 - 1.0);
-                let r = cam.get_ray(&mut rng, u, v);
-                pixel_color += ray_color(i, j, r, &world, max_depth, &mut rng);
-            }
+            jobs.push(job);
+        }
+    }
 
-            // eprintln!("> Pixel {},{} color {}", i, j, pixel_color);
+    // eprint!("\n");
+    eprintln!("Created {} jobs", JOB_COUNT);
 
-            write_color(pixel_color, samples_per_pixel_x * samples_per_pixel_y);
+    render(IMAGE_WIDTH, IMAGE_HEIGHT, jobs.as_mut_slice(), &mut pixels);
+
+    eprint!("Jobs finished\n");
+    eprint!("Writing image\n");
+
+    println!("P3\n{} {}\n255", IMAGE_WIDTH, IMAGE_HEIGHT);
+    for row in (0usize..(IMAGE_HEIGHT as usize)).rev() {
+        for col in 0usize..(IMAGE_WIDTH as usize) {
+            write_color(pixels[row][col], SAMPLE_COUNT);
         }
     }
     eprintln!("\nDone");

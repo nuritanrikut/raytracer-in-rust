@@ -30,8 +30,10 @@ impl Material for Dielectric {
         rng: &mut RandomNumberGenerator,
         r_in: Ray,
         rec: &HitRecord,
-    ) -> (bool, Option<Color>, Option<Ray>) {
-        let attenuation = Color {
+        attenuation: &mut Color,
+        scattered: &mut Ray,
+    ) -> bool {
+        *attenuation = Color {
             x: 1.0,
             y: 1.0,
             z: 1.0,
@@ -72,10 +74,10 @@ impl Material for Dielectric {
             refract(unit_direction, rec.normal, refraction_ratio)
         };
 
-        let scattered = Ray {
+        *scattered = Ray {
             origin: rec.p,
             direction,
         };
-        return (true, Some(attenuation), Some(scattered));
+        return true;
     }
 }

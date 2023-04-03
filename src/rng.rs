@@ -2,6 +2,7 @@ use super::vec3::*;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
+#[derive(Clone)]
 pub struct RandomNumberGenerator {
     pub state: u64,
     pub div: u64,

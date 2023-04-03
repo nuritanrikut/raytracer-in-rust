@@ -25,8 +25,10 @@ impl Material for NullMaterial {
         _: &mut RandomNumberGenerator,
         _: Ray,
         _: &HitRecord,
-    ) -> (bool, Option<Color>, Option<Ray>) {
-        return (false, None, None);
+        _: &mut Color,
+        _: &mut Ray
+    ) -> bool {
+        return false;
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{ops, fmt};
+use std::{fmt, ops};
 
 #[derive(Copy, Clone)]
 pub struct Vec3 {
@@ -11,6 +11,12 @@ pub type Point3 = Vec3;
 pub type Color = Vec3;
 
 impl Vec3 {
+    pub fn add_assign(&mut self, b: Vec3) {
+        self.x += b.x;
+        self.y += b.y;
+        self.z += b.z;
+    }
+
     pub fn length(self) -> f64 {
         return self.length_squared().sqrt();
     }

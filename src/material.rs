@@ -10,5 +10,7 @@ pub trait Material {
         rng: &mut RandomNumberGenerator,
         r_in: Ray,
         rec: &HitRecord,
-    ) -> (bool,Option<Color>,Option<Ray>);
+        attenuation: &mut Color,
+        scattered: &mut Ray
+    ) -> bool;
 }
