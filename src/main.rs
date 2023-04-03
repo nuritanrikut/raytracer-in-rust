@@ -237,10 +237,12 @@ fn ray_color(
             //     recursed_color,
             //     attenuation * recursed_color
             // );
+            coz::progress!("scatter");
             return attenuation * recursed_color;
         }
 
         // eprintln!("> Diffuse {} {} = {}", col, row, rec.material.diffuse());
+        coz::progress!("diffuse");
         return rec.material.diffuse();
     }
 
@@ -259,6 +261,7 @@ fn ray_color(
     let sky = white * (1.0 - t) + blue * t;
 
     // eprintln!("> Sky {} {} = {}", col, row, sky);
+    coz::progress!("sky");
     return sky;
 }
 
@@ -329,6 +332,7 @@ fn render_job(job: &mut Job) -> Color {
             ));
         }
     }
+
     return color;
 }
 
@@ -349,7 +353,7 @@ fn render(image_width: i32, image_height: i32, jobs: &mut [Job], pixels: &mut Ve
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 10.0;
-    const IMAGE_WIDTH: i32 = 192;
+    const IMAGE_WIDTH: i32 = 1920;
     const IMAGE_HEIGHT: i32 = ((IMAGE_WIDTH as f64) / ASPECT_RATIO) as i32;
     const SAMPLES_PER_PIXEL_X: i32 = 16;
     const SAMPLES_PER_PIXEL_Y: i32 = 16;
